@@ -138,6 +138,16 @@ public class EvoSuite {
 
         List<String> javaOpts = new ArrayList<>();
 
+        // TODO this should be handled better by avoiding "improper" use of reflection??
+        javaOpts.add("--add-opens=java.base/java.util=ALL-UNNAMED");
+        javaOpts.add("--add-opens=java.base/java.lang=ALL-UNNAMED"); 
+        javaOpts.add("--add-opens=java.base/java.lang.reflect=ALL-UNNAMED"); 
+        javaOpts.add("--add-opens=java.base/java.io=ALL-UNNAMED");
+        javaOpts.add("--add-opens=java.desktop/java.awt=ALL-UNNAMED");
+        javaOpts.add("--add-opens=java.desktop/javax.swing=ALL-UNNAMED");
+        javaOpts.add("--add-opens=java.desktop/sun.awt=ALL-UNNAMED");
+        javaOpts.add("--add-opens=java.desktop/sun.font=ALL-UNNAMED");
+        
         String version = EvoSuite.class.getPackage().getImplementationVersion();
         if (version == null) {
             version = "";

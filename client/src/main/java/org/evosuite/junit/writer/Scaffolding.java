@@ -34,7 +34,7 @@ import org.evosuite.runtime.classhandling.ClassResetter;
 import org.evosuite.runtime.classhandling.ClassStateSupport;
 import org.evosuite.runtime.classhandling.JDKClassResetter;
 import org.evosuite.runtime.jvm.ShutdownHookHandler;
-import org.evosuite.runtime.sandbox.Sandbox;
+//import org.evosuite.runtime.sandbox.Sandbox;
 import org.evosuite.runtime.thread.KillSwitchHandler;
 import org.evosuite.runtime.thread.ThreadStopper;
 import org.evosuite.runtime.util.JOptionPaneInputs;
@@ -153,6 +153,7 @@ public class Scaffolding {
             list.add(adapter.beforeAll().getCanonicalName());
             list.add(adapter.beforeEach().getCanonicalName());
             list.add(adapter.afterEach().getCanonicalName());
+            list.add(adapter.afterAll().getCanonicalName());
         }
 
         if (wasSecurityException || TestSuiteWriterUtils.shouldResetProperties(results)) {
@@ -165,8 +166,8 @@ public class Scaffolding {
              * sandbox, as anyway its code is only going to be in the
              * scaffolding
              */
-            list.add(Sandbox.class.getCanonicalName());
-            list.add(Sandbox.SandboxMode.class.getCanonicalName());
+//            list.add(Sandbox.class.getCanonicalName());
+//            list.add(Sandbox.SandboxMode.class.getCanonicalName());
         }
 
         if (wasSecurityException) {
@@ -455,7 +456,7 @@ public class Scaffolding {
 
         if (Properties.RESET_STATIC_FIELDS || wasSecurityException) {
             bd.append(BLOCK_SPACE);
-            bd.append(Sandbox.class.getName()).append(".doneWithExecutingSUTCode(); \n");
+//            bd.append(Sandbox.class.getName()).append(".doneWithExecutingSUTCode(); \n");
         }
 
         if (TestSuiteWriterUtils.needToUseAgent()) {
@@ -507,7 +508,7 @@ public class Scaffolding {
 
         if (Properties.RESET_STATIC_FIELDS || wasSecurityException) {
             bd.append(BLOCK_SPACE);
-            bd.append(Sandbox.class.getName()).append(".goingToExecuteSUTCode(); \n");
+//            bd.append(Sandbox.class.getName()).append(".goingToExecuteSUTCode(); \n");
         }
 
         // FIXME those should be handled in the mocked classes,eg mock for
@@ -584,7 +585,7 @@ public class Scaffolding {
 
             if (Properties.RESET_STATIC_FIELDS || wasSecurityException) {
                 bd.append(BLOCK_SPACE);
-                bd.append("Sandbox.resetDefaultSecurityManager(); \n");
+//                bd.append("Sandbox.resetDefaultSecurityManager(); \n");
             }
 
             if (wasSecurityException) {
@@ -698,10 +699,10 @@ public class Scaffolding {
         if (Properties.RESET_STATIC_FIELDS || wasSecurityException) {
             // need to setup the Sandbox mode
             bd.append(BLOCK_SPACE);
-            bd.append(RuntimeSettings.class.getName()).append(".sandboxMode = ").append(Sandbox.SandboxMode.class.getCanonicalName()).append(".").append(Properties.SANDBOX_MODE).append("; \n");
+//            bd.append(RuntimeSettings.class.getName()).append(".sandboxMode = ").append(Sandbox.SandboxMode.class.getCanonicalName()).append(".").append(Properties.SANDBOX_MODE).append("; \n");
 
             bd.append(BLOCK_SPACE);
-            bd.append(Sandbox.class.getName()).append(".initializeSecurityManagerForSUT(); \n");
+//            bd.append(Sandbox.class.getName()).append(".initializeSecurityManagerForSUT(); \n");
         }
 
         if (wasSecurityException) {

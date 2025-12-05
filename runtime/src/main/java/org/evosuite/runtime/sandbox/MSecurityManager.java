@@ -318,14 +318,26 @@ public class MSecurityManager extends SecurityManager {
      * @throws IllegalStateException
      */
     public void apply() throws IllegalStateException {
+
+        // Java 17+ does not allow setting a SecurityManager
+        int javaVersion = Runtime.version().feature();
+        if (javaVersion >= 17) {
+            logger.warn("SecurityManager not supported on Java " + javaVersion + " or later. EvoSuite sandbox is disabled.");
+            return;  // Do not attempt System.setSecurityManager()
+        }
+
         try {
             System.setSecurityManager(this);
         } catch (SecurityException e) {
-            // this should never happen in EvoSuite, ie this object should be created just once
             logger.error("Cannot instantiate mock security manager", e);
             throw new IllegalStateException(e);
+        } catch (UnsupportedOperationException e) {
+            // Since Java 21 throws this, we handle it explicitly
+            logger.warn("UnsupportedOperationException while setting SecurityManager on Java " + javaVersion + ". Sandbox disabled.");
+            return;
         }
     }
+
 
     /**
      * Note: an un-privileged thread would throw a security exception

@@ -31,6 +31,12 @@ public class Euclidean_ESTest_scaffolding {
 
     @BeforeClass
     public static void initEvoSuiteFramework() {
+
+        // Skip scaffolding on Java 17+
+        if (Runtime.version().feature() >= 17) {
+            org.junit.Assume.assumeTrue("Skipping EvoSuite scaffolding on Java >= 17", false);
+        }
+
         org.evosuite.runtime.RuntimeSettings.className = "com.examples.with.different.packagename.Euclidean";
         org.evosuite.runtime.GuiSupport.initialize();
         org.evosuite.runtime.RuntimeSettings.maxNumberOfThreads = 100;

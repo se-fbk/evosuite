@@ -165,7 +165,7 @@ public class BytecodeInstrumentation {
          * CFGAdapter.
          */
         int asmFlags = ClassWriter.COMPUTE_FRAMES;
-        ClassWriter writer = new ComputeClassWriter(asmFlags);
+        ClassWriter writer = new ComputeClassWriter(asmFlags, classLoader);
 
         ClassVisitor cv = writer;
         if (logger.isDebugEnabled()) {

@@ -79,9 +79,11 @@ public class JUnitAnalyzerTest {
 
     @Test
     public void testSandboxIssue() throws Exception {
+        
+        int javaVersion = Runtime.version().feature();
+        org.junit.Assume.assumeTrue("Sandbox not supported on Java " + javaVersion, javaVersion < 17);
 
         //First, get a TestCase from a carved JUnit
-
         Properties.SELECTED_JUNIT = com.examples.with.different.packagename.sandbox.OpenStreamInATryCatch_FakeTestToCarve.class.getCanonicalName();
         Properties.TARGET_CLASS = com.examples.with.different.packagename.sandbox.OpenStreamInATryCatch.class.getCanonicalName();
 

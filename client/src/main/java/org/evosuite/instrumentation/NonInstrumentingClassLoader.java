@@ -54,7 +54,7 @@ public class NonInstrumentingClassLoader extends InstrumentingClassLoader {
          *  as well as CFGAdapter.
          */
         int asmFlags = ClassWriter.COMPUTE_FRAMES;
-        ClassWriter writer = new ComputeClassWriter(asmFlags);
+        ClassWriter writer = new ComputeClassWriter(asmFlags, this);
 
         ClassVisitor cv = writer;
         cv = new NonTargetClassAdapter(cv, className);

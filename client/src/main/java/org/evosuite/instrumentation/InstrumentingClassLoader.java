@@ -130,6 +130,34 @@ public class InstrumentingClassLoader extends ClassLoader {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * This loader has no URLs/classpath of its own (see the class Javadoc): {@code loadClass()}
+     * resolves target-project classes via a custom mechanism ({@link ResourceList}, backed by
+     * {@code Properties.CP}), not via the standard {@code findResource()}/{@code getResource()}
+     * APIs. Without this override, {@code getResourceAsStream()} on this loader can only ever see
+     * what its parent classloader has - which does not necessarily include the target project's
+     * classpath (e.g. when running with {@code client_on_thread=true}, or for the odd resource
+     * lookup triggered from a background/RMI thread). This matters because some code (e.g.
+     * {@code ComputeClassWriter}, used by ASM to compute common super classes during
+     * instrumentation) legitimately needs to read the bytecode of arbitrary classpath classes via
+     * {@code getResourceAsStream()}, not via {@code loadClass()}.
+     */
+    @Override
+    public InputStream getResourceAsStream(String name) {
+        InputStream is = super.getResourceAsStream(name);
+        if (is != null) {
+            return is;
+        }
+        if (name.endsWith(".class")) {
+            String className = name.substring(0, name.length() - ".class".length()).replace('/', '.');
+            return ResourceList.getInstance(TestGenerationContext.getInstance().getClassLoaderForSUT())
+                    .getClassAsStream(className);
+        }
+        return null;
+    }
+
     //This is needed, as it is overridden in subclasses
     protected byte[] getTransformedBytes(String className, InputStream is) throws IOException {
         return instrumentation.transformBytes(this, className, new ClassReader(is));

@@ -31,6 +31,9 @@ public class StorageManagerTest {
     @Test
     public void testDefaultProjectInfo() {
 
+        // Fix for Java 17-21: disable optimizations in JAXB
+        System.setProperty("com.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize", "true");
+        
         StorageManager sm = new StorageManager();
         sm.clean();
 

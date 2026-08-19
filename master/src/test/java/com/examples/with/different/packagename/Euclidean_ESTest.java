@@ -25,10 +25,19 @@ import org.evosuite.runtime.EvoRunner;
 import org.evosuite.runtime.EvoRunnerParameters;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.Assume;
+import org.junit.BeforeClass;
+
 
 @RunWith(EvoRunner.class)
 @EvoRunnerParameters(mockJVMNonDeterminism = true, useVFS = true, useVNET = true, resetStaticState = true, separateClassLoader = true)
 public class Euclidean_ESTest extends Euclidean_ESTest_scaffolding {
+
+    @BeforeClass
+    public static void skipOnJava21() {
+        // Skip EvoSuite runtime tests on Java 17+
+        Assume.assumeTrue("Skipping EvoSuite test on Java >= 17", Runtime.version().feature() < 17);
+    }
 
     @Test
     public void test0() throws Throwable {

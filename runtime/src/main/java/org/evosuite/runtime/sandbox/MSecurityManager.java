@@ -319,21 +319,18 @@ public class MSecurityManager extends SecurityManager {
      */
     public void apply() throws IllegalStateException {
 
-        // Java 17+ does not allow setting a SecurityManager
-        int javaVersion = Runtime.version().feature();
-        if (javaVersion >= 17) {
-            logger.warn("SecurityManager not supported on Java " + javaVersion + " or later. EvoSuite sandbox is disabled.");
-            return;  // Do not attempt System.setSecurityManager()
-        }
-
         try {
             System.setSecurityManager(this);
         } catch (SecurityException e) {
             logger.error("Cannot instantiate mock security manager", e);
             throw new IllegalStateException(e);
         } catch (UnsupportedOperationException e) {
-            // Since Java 21 throws this, we handle it explicitly
-            logger.warn("UnsupportedOperationException while setting SecurityManager on Java " + javaVersion + ". Sandbox disabled.");
+            // Since JDK 18 (JEP 411), the JVM must be started with
+            // -Djava.security.manager=allow for this to succeed. If that flag
+            // was not passed, we degrade gracefully here instead of crashing:
+            // sandboxing is disabled for this run only.
+            logger.warn("SecurityManager could not be installed (JVM was not started with " +
+                    "-Djava.security.manager=allow). EvoSuite sandbox protections are DISABLED for this run.", e);
             return;
         }
     }
@@ -1065,6 +1062,15 @@ public class MSecurityManager extends SecurityManager {
          * we need it for reflection
          */
         if (name.equals("reflectionFactoryAccess")) {
+            return true;
+        }
+
+        /*
+         * needed for java.lang.StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE),
+         * the JDK 9+ sanctioned replacement for the old sun.reflect.Reflection.getCallerClass();
+         * same category of risk as the other reflection permissions allowed above
+         */
+        if (name.equals("getStackWalkerWithClassReference")) {
             return true;
         }
 

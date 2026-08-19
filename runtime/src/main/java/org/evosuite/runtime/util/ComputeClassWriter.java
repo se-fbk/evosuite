@@ -38,10 +38,32 @@ public class ComputeClassWriter extends ClassWriter {
 
     private final Logger logger = LoggerFactory.getLogger(ComputeClassWriter.class);
 
-    private final ClassLoader l = getClass().getClassLoader();
+    /**
+     * Classloader to use to look up the bytecode of types encountered while computing common
+     * super classes (see {@link #typeInfo(String)}). May be {@code null}, in which case we fall
+     * back to the calling thread's context classloader - see the constructor without this
+     * parameter for why that fallback alone is not reliable.
+     */
+    private final ClassLoader classLoader;
 
     public ComputeClassWriter(final int flags) {
+        this(flags, null);
+    }
+
+    /**
+     * @param flags  ASM ClassWriter flags, e.g. {@link ClassWriter#COMPUTE_FRAMES}.
+     * @param loader the classloader that has visibility of the full classpath of the class being
+     *               instrumented (typically the {@code InstrumentingClassLoader} performing the
+     *               instrumentation). Prefer this constructor over {@link #ComputeClassWriter(int)}:
+     *               relying on {@code Thread.currentThread().getContextClassLoader()} alone is
+     *               unreliable, since instrumentation can be triggered from background worker
+     *               threads (e.g. RMI dispatch threads, or the client's search executor) whose
+     *               context classloader was never wired up with the target project's classpath,
+     *               even though the class being looked up is genuinely on that classpath.
+     */
+    public ComputeClassWriter(final int flags, final ClassLoader loader) {
         super(flags);
+        this.classLoader = loader;
     }
 
     @Override
@@ -174,7 +196,8 @@ public class ComputeClassWriter extends ClassWriter {
      * @throws NullPointerException if the bytecode of 'type' cannot be found.
      */
     private ClassReader typeInfo(final String type) throws IOException, NullPointerException {
-        try (InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream(type + ".class")) {
+        ClassLoader loader = classLoader != null ? classLoader : Thread.currentThread().getContextClassLoader();
+        try (InputStream is = loader.getResourceAsStream(type + ".class")) {
             if (is == null)
                 throw new NullPointerException("Class not found " + type);
             return new ClassReader(is);

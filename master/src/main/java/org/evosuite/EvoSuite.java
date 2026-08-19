@@ -24,6 +24,7 @@ import org.apache.commons.cli.*;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.evosuite.classpath.ClassPathHacker;
+import org.evosuite.classpath.ClassPathHandler;
 import org.evosuite.executionmode.*;
 import org.evosuite.junit.writer.TestSuiteWriterUtils;
 import org.evosuite.runtime.sandbox.MSecurityManager;
@@ -147,7 +148,12 @@ public class EvoSuite {
         javaOpts.add("--add-opens=java.desktop/javax.swing=ALL-UNNAMED");
         javaOpts.add("--add-opens=java.desktop/sun.awt=ALL-UNNAMED");
         javaOpts.add("--add-opens=java.desktop/sun.font=ALL-UNNAMED");
-        
+
+        // Required since JDK 18 (JEP 411) for MSecurityManager to be able to
+        // install itself as the SecurityManager in the forked client process,
+        // i.e. for the EvoSuite sandbox to actually work.
+        javaOpts.add("-Djava.security.manager=allow");
+
         String version = EvoSuite.class.getPackage().getImplementationVersion();
         if (version == null) {
             version = "";
@@ -246,6 +252,33 @@ public class EvoSuite {
             CommandLineParameters.handleClassPath(line);
 
             CommandLineParameters.handleJVMOptions(javaOpts, line);
+
+            /*
+             * RMI (used for master<->client communication) fails to deserialize objects
+             * referencing classes that aren't on the receiving JVM's own classpath - e.g. the
+             * master process (launched as just "-jar evosuite-master.jar", without the target
+             * project's classpath) receiving search-result statistics from the client that
+             * reference SUT/library types. Advertise this JVM's target-project classpath as an
+             * RMI codebase, and allow the other end to actually use it, so such classes can be
+             * fetched on demand instead of failing outright. Safe here since all of EvoSuite's
+             * RMI traffic is over localhost between processes it spawned itself, never exposed
+             * to untrusted network peers.
+             */
+            String targetProjectCP = ClassPathHandler.getInstance().getTargetProjectClasspath();
+            if (!targetProjectCP.isEmpty()) {
+                StringBuilder codebase = new StringBuilder();
+                for (String entry : targetProjectCP.split(File.pathSeparator)) {
+                    if (entry.isEmpty()) {
+                        continue;
+                    }
+                    if (codebase.length() > 0) {
+                        codebase.append(' ');
+                    }
+                    codebase.append(new File(entry).toURI());
+                }
+                javaOpts.add("-Djava.rmi.server.codebase=" + codebase);
+                javaOpts.add("-Djava.rmi.server.useCodebaseOnly=false");
+            }
 
 
             if (!ClassPathHacker.isJunitCheckAvailable()) {

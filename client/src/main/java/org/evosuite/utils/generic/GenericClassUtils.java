@@ -71,9 +71,22 @@ public class GenericClassUtils {
         if (type instanceof Class) {
             // Handle nested classes: check if any of the enclosing classes declares a type
             // parameter.
-            for (Class<?> clazz = (Class<?>) type; clazz != null; clazz = clazz.getEnclosingClass()) {
+            for (Class<?> clazz = (Class<?>) type; clazz != null; ) {
                 if (clazz.getTypeParameters().length != 0) {
                     return true;
+                }
+                try {
+                    clazz = clazz.getEnclosingClass();
+                } catch (LinkageError e) {
+                    // The enclosing class could not be resolved by clazz's defining
+                    // classloader (e.g. EvoSuite's master and client processes can end up
+                    // with different views of the target project's classpath). Rather than
+                    // letting this abort whatever triggered the check - e.g. deserializing a
+                    // GenericClass sent over RMI, which would otherwise take down the whole
+                    // statistics/result reporting call - just stop walking the enclosing-class
+                    // chain here.
+                    logger.debug("Could not resolve enclosing class of " + clazz + ": " + e);
+                    break;
                 }
             }
 

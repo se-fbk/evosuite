@@ -34,7 +34,17 @@ VOLUME /evosuite
 COPY --from=build /build/bin /evosuite-bin
 
 # The executable is evosuite
-ENTRYPOINT ["java", "--add-opens=java.base/java.lang=ALL-UNNAMED", "--add-opens=java.base/java.util=ALL-UNNAMED", "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED", "--add-opens=java.base/java.text=ALL-UNNAMED", "--add-opens=java.desktop/java.awt.font=ALL-UNNAMED", "-jar", "/evosuite-bin/evosuite.jar"]
+# Note: this list matches the one EvoSuite.java adds for the forked client process
+# (see master/src/main/java/org/evosuite/EvoSuite.java) - keep them in sync. With
+# -Dclient_on_thread=true, the client runs in this same JVM and only gets what's
+# passed here, so it doesn't benefit from EvoSuite.java's own list.
+# -Djava.rmi.server.useCodebaseOnly=false lets this JVM (acting as master, or as
+# client under -Dclient_on_thread=true) fetch classes referenced in RMI-received
+# objects that aren't on its own classpath, from whichever codebase the sender
+# advertised - see EvoSuite.java's own codebase-computing fix, which covers the
+# forked-client side; a static flag is all that's needed here since the actual
+# codebase URL depends on the -projectCP given at runtime, not at image-build time.
+ENTRYPOINT ["java", "--add-opens=java.base/java.lang=ALL-UNNAMED", "--add-opens=java.base/java.util=ALL-UNNAMED", "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED", "--add-opens=java.base/java.io=ALL-UNNAMED", "--add-opens=java.base/java.text=ALL-UNNAMED", "--add-opens=java.desktop/java.awt=ALL-UNNAMED", "--add-opens=java.desktop/java.awt.font=ALL-UNNAMED", "--add-opens=java.desktop/javax.swing=ALL-UNNAMED", "--add-opens=java.desktop/sun.awt=ALL-UNNAMED", "--add-opens=java.desktop/sun.font=ALL-UNNAMED", "-Djava.security.manager=allow", "-Djava.rmi.server.useCodebaseOnly=false", "-jar", "/evosuite-bin/evosuite.jar"]
 
 # The default argument is the help menu
 # This can be overidden on the command line

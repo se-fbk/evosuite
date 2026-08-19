@@ -11,20 +11,10 @@
 	<artifactId>evosuite-client</artifactId>
 	<packaging>jar</packaging>
 
-    <!-- profiles>
-        <profile>
-            <id>java8</id>
-            <activation>
-                <jdk>1.8</jdk>
-            </activation>
-            <dependencies>
-                <dependency>
-                    <groupId>com.sun</groupId>
-                    <artifactId>tools</artifactId>
-                </dependency>
-            </dependencies>
-        </profile>
-    </profiles -->
+    <properties>
+        <!-- Extends (not replaces) the root pom's surefire <argLine> -->
+        <extraArgLine>--add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/java.io=ALL-UNNAMED</extraArgLine>
+    </properties>
 
 	<dependencies>
 
@@ -150,23 +140,5 @@
         </dependency>
     </dependencies>
 
-    <build>
-        <plugins>
-            <!-- FIXME: this is just temporary to make Master tests compile. To remove once "com.examples..." is properly handled -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.2.3</version>
-                <configuration>
-                    <argLine>
-                        --add-opens java.base/java.util=ALL-UNNAMED
-                        --add-opens java.base/java.lang=ALL-UNNAMED
-                        --add-opens java.base/java.lang.reflect=ALL-UNNAMED
-                        --add-opens java.base/java.io=ALL-UNNAMED
-                    </argLine>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
 </project>
 	

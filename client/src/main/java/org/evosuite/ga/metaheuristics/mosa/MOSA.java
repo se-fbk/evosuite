@@ -21,7 +21,11 @@ package org.evosuite.ga.metaheuristics.mosa;
 
 import org.evosuite.ClientProcess;
 import org.evosuite.Properties;
+import org.evosuite.ga.Chromosome;
 import org.evosuite.ga.ChromosomeFactory;
+import org.evosuite.ga.FitnessFunction;
+import org.evosuite.ga.archive.InMemorySearchArchive;
+import org.evosuite.ga.archive.SearchArchive;
 import org.evosuite.ga.comparators.OnlyCrowdingComparator;
 import org.evosuite.ga.operators.ranking.CrowdingDistance;
 import org.evosuite.ga.operators.selection.BestKSelection;
@@ -31,22 +35,30 @@ import org.evosuite.ga.operators.selection.SelectionFunction;
 import org.evosuite.rmi.ClientServices;
 import org.evosuite.rmi.service.ClientNodeLocal;
 import org.evosuite.statistics.RuntimeVariable;
-import org.evosuite.testcase.TestChromosome;
-import org.evosuite.testcase.TestFitnessFunction;
 import org.evosuite.utils.Listener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Consumer;
 
 /**
- * Implementation of the Many-Objective Sorting Algorithm (MOSA) described in the
- * paper "Reformulating branch coverage as a many-objective optimization problem".
+ * Implementation of the Many-Objective Sorting Algorithm (MOSA) described in the paper
+ * "Reformulating branch coverage as a many-objective optimization problem".
+ * <p>
+ * Chromosome-agnostic - see {@link AbstractMOSA} - so it can be used with any
+ * {@code Chromosome<T>}/{@code FitnessFunction<T>} pair, not just EvoSuite's own test-generation
+ * types.
  *
+ * @param <T> the chromosome type being evolved
  * @author Annibale Panichella, Fitsum M. Kifetew
  */
-public class MOSA extends AbstractMOSA {
+public class MOSA<T extends Chromosome<T>> extends AbstractMOSA<T> {
 
     private static final long serialVersionUID = 146182080947267628L;
 
@@ -55,33 +67,59 @@ public class MOSA extends AbstractMOSA {
     /**
      * immigrant groups from neighbouring client
      */
-    private final ConcurrentLinkedQueue<List<TestChromosome>> immigrants =
-            new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<List<T>> immigrants = new ConcurrentLinkedQueue<>();
 
-    private final SelectionFunction<TestChromosome> emigrantsSelection;
+    private final SelectionFunction<T> emigrantsSelection;
 
     /**
      * Crowding distance measure to use
      */
-    protected CrowdingDistance<TestChromosome> distance = new CrowdingDistance<>();
+    protected CrowdingDistance<T> distance = new CrowdingDistance<>();
 
     /**
-     * Constructor based on the abstract class {@link AbstractMOSA}
+     * Convenience constructor for reuse outside of EvoSuite's own test-generation pipeline: uses
+     * a simple in-memory {@link SearchArchive} and performs no offspring refinement beyond
+     * mutation.
      *
-     * @param factory
+     * @param factory a {@link ChromosomeFactory} object
      */
-    public MOSA(ChromosomeFactory<TestChromosome> factory) {
-        super(factory);
+    public MOSA(ChromosomeFactory<T> factory) {
+        this(factory, new InMemorySearchArchive<>(), OffspringFilter.mutateOnly());
+    }
 
+    /**
+     * @param factory         a {@link ChromosomeFactory} object
+     * @param archive         the best-known-solution(s)-per-target archive to use
+     * @param offspringFilter domain-specific offspring mutation/refinement to apply during
+     *                        breeding
+     */
+    public MOSA(ChromosomeFactory<T> factory, SearchArchive<T> archive, OffspringFilter<T> offspringFilter) {
+        super(factory, archive, offspringFilter);
+        this.emigrantsSelection = createEmigrantsSelection();
+    }
+
+    /**
+     * @param factory             a {@link ChromosomeFactory} object
+     * @param archive             the best-known-solution(s)-per-target archive to use
+     * @param offspringFilter     domain-specific offspring mutation/refinement to apply during
+     *                            breeding
+     * @param onFitnessCalculated extra post-processing to run after a chromosome's fitness has
+     *                            been computed
+     */
+    public MOSA(ChromosomeFactory<T> factory, SearchArchive<T> archive, OffspringFilter<T> offspringFilter,
+                Consumer<T> onFitnessCalculated) {
+        super(factory, archive, offspringFilter, onFitnessCalculated);
+        this.emigrantsSelection = createEmigrantsSelection();
+    }
+
+    private static <T extends Chromosome<T>> SelectionFunction<T> createEmigrantsSelection() {
         switch (Properties.EMIGRANT_SELECTION_FUNCTION) {
             case RANK:
-                this.emigrantsSelection = new RankSelection<>();
-                break;
+                return new RankSelection<>();
             case RANDOMK:
-                this.emigrantsSelection = new RandomKSelection<>();
-                break;
+                return new RandomKSelection<>();
             default:
-                this.emigrantsSelection = new BestKSelection<>();
+                return new BestKSelection<>();
         }
     }
 
@@ -90,10 +128,10 @@ public class MOSA extends AbstractMOSA {
      */
     @Override
     protected void evolve() {
-        List<TestChromosome> offspringPopulation = this.breedNextGeneration();
+        List<T> offspringPopulation = this.breedNextGeneration();
 
         // Create the union of parents and offSpring
-        List<TestChromosome> union = new ArrayList<>();
+        List<T> union = new ArrayList<>();
         union.addAll(this.population);
         union.addAll(offspringPopulation);
 
@@ -102,7 +140,7 @@ public class MOSA extends AbstractMOSA {
             union.addAll(immigrants.poll());
         }
 
-        Set<TestFitnessFunction> uncoveredGoals = this.getUncoveredGoals();
+        Set<FitnessFunction<T>> uncoveredGoals = this.getUncoveredGoals();
 
         // Ranking the union
         logger.debug("Union Size =" + union.size());
@@ -111,7 +149,7 @@ public class MOSA extends AbstractMOSA {
 
         int remain = this.population.size();
         int index = 0;
-        List<TestChromosome> front = null;
+        List<T> front;
         this.population.clear();
 
         // Obtain the next front
@@ -140,16 +178,14 @@ public class MOSA extends AbstractMOSA {
             for (int k = 0; k < remain; k++) {
                 this.population.add(front.get(k));
             }
-
-            remain = 0;
         }
 
         // for parallel runs: collect best k individuals for migration
         if (Properties.NUM_PARALLEL_CLIENTS > 1 && Properties.MIGRANTS_ITERATION_FREQUENCY > 0) {
             if ((currentIteration + 1) % Properties.MIGRANTS_ITERATION_FREQUENCY == 0 && !this.population.isEmpty()) {
-                HashSet<TestChromosome> emigrants = new HashSet<>(emigrantsSelection.select(this.population,
+                HashSet<T> emigrants = new HashSet<>(emigrantsSelection.select(this.population,
                         Properties.MIGRANTS_COMMUNICATION_RATE));
-                ClientServices.<TestChromosome>getInstance().getClientNode().emigrate(emigrants);
+                ClientServices.<T>getInstance().getClientNode().emigrate(emigrants);
             }
         }
 
@@ -177,10 +213,9 @@ public class MOSA extends AbstractMOSA {
             this.distance.fastEpsilonDominanceAssignment(this.rankingFunction.getSubfront(i), this.getUncoveredGoals());
         }
 
-        final ClientNodeLocal<TestChromosome> clientNode =
-                ClientServices.<TestChromosome>getInstance().getClientNode();
+        final ClientNodeLocal<T> clientNode = ClientServices.<T>getInstance().getClientNode();
 
-        Listener<Set<TestChromosome>> listener = null;
+        Listener<Set<T>> listener = null;
         if (Properties.NUM_PARALLEL_CLIENTS > 1) {
             listener = event -> immigrants.add(new LinkedList<>(event));
             clientNode.addListener(listener);
@@ -197,17 +232,17 @@ public class MOSA extends AbstractMOSA {
 
             if (ClientProcess.DEFAULT_CLIENT_NAME.equals(ClientProcess.getIdentifier())) {
                 //collect all end result test cases
-                Set<Set<TestChromosome>> collectedSolutions = clientNode.getBestSolutions();
+                Set<Set<T>> collectedSolutions = clientNode.getBestSolutions();
 
                 logger.debug(ClientProcess.DEFAULT_CLIENT_NAME + ": Received " + collectedSolutions.size() + " solution sets");
-                for (Set<TestChromosome> solution : collectedSolutions) {
-                    for (TestChromosome t : solution) {
+                for (Set<T> solution : collectedSolutions) {
+                    for (T t : solution) {
                         this.calculateFitness(t);
                     }
                 }
             } else {
                 //send end result test cases to Client-0
-                Set<TestChromosome> solutionsSet = new HashSet<>(getSolutions());
+                Set<T> solutionsSet = new HashSet<>(getSolutions());
                 logger.debug(ClientProcess.getPrettyPrintIdentifier() + "Sending " + solutionsSet.size()
                         + " solutions to " + ClientProcess.DEFAULT_CLIENT_NAME);
                 clientNode.sendBestSolution(solutionsSet);

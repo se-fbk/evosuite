@@ -20,47 +20,107 @@
 package org.evosuite.ga.metaheuristics.mosa;
 
 import org.evosuite.Properties;
+import org.evosuite.ga.Chromosome;
 import org.evosuite.ga.ChromosomeFactory;
 import org.evosuite.ga.FitnessFunction;
+import org.evosuite.ga.archive.InMemorySearchArchive;
+import org.evosuite.ga.archive.SearchArchive;
 import org.evosuite.ga.comparators.OnlyCrowdingComparator;
-import org.evosuite.ga.metaheuristics.mosa.structural.MultiCriteriaManager;
+import org.evosuite.ga.metaheuristics.mosa.structural.GoalManager;
+import org.evosuite.ga.metaheuristics.mosa.structural.GoalManagerFactory;
+import org.evosuite.ga.metaheuristics.mosa.structural.StaticGoalManager;
 import org.evosuite.ga.operators.ranking.CrowdingDistance;
-import org.evosuite.testcase.TestChromosome;
-import org.evosuite.testcase.TestFitnessFunction;
 import org.evosuite.utils.LoggingUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Implementation of the DynaMOSA (Many Objective Sorting Algorithm) described in the paper
  * "Automated Test Case Generation as a Many-Objective Optimisation Problem with Dynamic Selection
  * of the Targets".
+ * <p>
+ * Chromosome-agnostic - see {@link AbstractMOSA} - so it can be used with any
+ * {@code Chromosome<T>}/{@code FitnessFunction<T>} pair. DynaMOSA's defining feature - narrowing
+ * the search to a dynamically expanding frontier of "current goals" based on dependencies between
+ * targets - is delegated to an injectable {@link GoalManager}, produced (once the targets are
+ * known) by a {@link GoalManagerFactory}. EvoSuite's own instances use a
+ * {@code MultiCriteriaManager}, deriving that dependency relation from Java bytecode
+ * branch/control-dependency information; a consumer without an equivalent dependency relation for
+ * its own domain can use {@link StaticGoalManager} (all goals active from the start, i.e. plain
+ * MOSA behavior) as a default.
  *
+ * @param <T> the chromosome type being evolved
  * @author Annibale Panichella, Fitsum M. Kifetew, Paolo Tonella
  */
-public class DynaMOSA extends AbstractMOSA {
+public class DynaMOSA<T extends Chromosome<T>> extends AbstractMOSA<T> {
 
     private static final long serialVersionUID = 146182080947267628L;
 
     private static final Logger logger = LoggerFactory.getLogger(DynaMOSA.class);
 
+    private final GoalManagerFactory<T> goalManagerFactory;
+
     /**
      * Manager to determine the test goals to consider at each generation
      */
-    protected MultiCriteriaManager goalsManager = null;
+    protected GoalManager<T> goalsManager = null;
 
-    protected CrowdingDistance<TestChromosome> distance = new CrowdingDistance<>();
+    protected CrowdingDistance<T> distance = new CrowdingDistance<>();
 
     /**
-     * Constructor based on the abstract class {@link AbstractMOSA}.
+     * Convenience constructor for reuse outside of EvoSuite's own test-generation pipeline: uses
+     * a simple in-memory {@link SearchArchive} and a {@link StaticGoalManager} (i.e. plain,
+     * non-dynamic MOSA behavior, since no dependency relation between targets is assumed) and
+     * performs no offspring refinement beyond mutation.
      *
-     * @param factory
+     * @param factory a {@link ChromosomeFactory} object
      */
-    public DynaMOSA(ChromosomeFactory<TestChromosome> factory) {
-        super(factory);
+    public DynaMOSA(ChromosomeFactory<T> factory) {
+        this(factory, new InMemorySearchArchive<>(), OffspringFilter.mutateOnly());
+    }
+
+    /**
+     * @param factory         a {@link ChromosomeFactory} object
+     * @param archive         the best-known-solution(s)-per-target archive to use
+     * @param offspringFilter domain-specific offspring mutation/refinement to apply during
+     *                        breeding
+     */
+    public DynaMOSA(ChromosomeFactory<T> factory, SearchArchive<T> archive, OffspringFilter<T> offspringFilter) {
+        this(factory, archive, offspringFilter, targets -> new StaticGoalManager<>(archive, targets));
+    }
+
+    /**
+     * @param factory            a {@link ChromosomeFactory} object
+     * @param archive            the best-known-solution(s)-per-target archive to use
+     * @param offspringFilter    domain-specific offspring mutation/refinement to apply during
+     *                           breeding
+     * @param goalManagerFactory creates the {@link GoalManager} driving dynamic target selection,
+     *                           once the targets are known
+     */
+    public DynaMOSA(ChromosomeFactory<T> factory, SearchArchive<T> archive, OffspringFilter<T> offspringFilter,
+                     GoalManagerFactory<T> goalManagerFactory) {
+        super(factory, archive, offspringFilter);
+        this.goalManagerFactory = goalManagerFactory;
+    }
+
+    /**
+     * @param factory             a {@link ChromosomeFactory} object
+     * @param archive             the best-known-solution(s)-per-target archive to use
+     * @param offspringFilter     domain-specific offspring mutation/refinement to apply during
+     *                            breeding
+     * @param goalManagerFactory  creates the {@link GoalManager} driving dynamic target
+     *                            selection, once the targets are known
+     * @param onFitnessCalculated extra post-processing to run after a chromosome's fitness has
+     *                            been computed
+     */
+    public DynaMOSA(ChromosomeFactory<T> factory, SearchArchive<T> archive, OffspringFilter<T> offspringFilter,
+                     GoalManagerFactory<T> goalManagerFactory, Consumer<T> onFitnessCalculated) {
+        super(factory, archive, offspringFilter, onFitnessCalculated);
+        this.goalManagerFactory = goalManagerFactory;
     }
 
     /**
@@ -69,10 +129,10 @@ public class DynaMOSA extends AbstractMOSA {
     @Override
     protected void evolve() {
         // Generate offspring, compute their fitness, update the archive and coverage goals.
-        List<TestChromosome> offspringPopulation = this.breedNextGeneration();
+        List<T> offspringPopulation = this.breedNextGeneration();
 
         // Create the union of parents and offspring
-        List<TestChromosome> union = new ArrayList<>(this.population.size() + offspringPopulation.size());
+        List<T> union = new ArrayList<>(this.population.size() + offspringPopulation.size());
         union.addAll(this.population);
         union.addAll(offspringPopulation);
 
@@ -90,7 +150,7 @@ public class DynaMOSA extends AbstractMOSA {
         this.population.clear();
 
         // Obtain the first front
-        List<TestChromosome> front = this.rankingFunction.getSubfront(index);
+        List<T> front = this.rankingFunction.getSubfront(index);
 
         // Successively iterate through the fronts (starting with the first non-dominated front)
         // and insert their members into the population for the next generation. This is done until
@@ -143,7 +203,7 @@ public class DynaMOSA extends AbstractMOSA {
 
         // Set up the targets to cover, which are initially free of any control dependencies.
         // We are trying to optimize for multiple targets at the same time.
-        this.goalsManager = new MultiCriteriaManager(this.fitnessFunctions);
+        this.goalsManager = this.goalManagerFactory.create(this.fitnessFunctions);
 
         LoggingUtils.getEvoLogger().info("* Initial Number of Goals in DynaMOSA = " +
                 this.goalsManager.getCurrentGoals().size() + " / " + this.getUncoveredGoals().size());
@@ -184,7 +244,7 @@ public class DynaMOSA extends AbstractMOSA {
      * @param c the chromosome whose fitness to compute
      */
     @Override
-    protected void calculateFitness(TestChromosome c) {
+    protected void calculateFitness(T c) {
         if (!isFinished()) {
             // this also updates the archive and the targets
             this.goalsManager.calculateFitness(c, this);
@@ -193,9 +253,9 @@ public class DynaMOSA extends AbstractMOSA {
     }
 
     @Override
-    public List<? extends FitnessFunction<TestChromosome>> getFitnessFunctions() {
-        List<TestFitnessFunction> testFitnessFunctions = new ArrayList<>(goalsManager.getCoveredGoals());
-        testFitnessFunctions.addAll(goalsManager.getUncoveredGoals());
-        return testFitnessFunctions;
+    public List<? extends FitnessFunction<T>> getFitnessFunctions() {
+        List<FitnessFunction<T>> allGoals = new ArrayList<>(goalsManager.getCoveredGoals());
+        allGoals.addAll(goalsManager.getUncoveredGoals());
+        return allGoals;
     }
 }

@@ -34,6 +34,7 @@ public class MIOTestSuiteAdapter extends MOSATestSuiteAdapter {
 
     public MIOTestSuiteAdapter(final MIO algorithm) {
         super(algorithm);
+        algorithm.setAdapter(this);
     }
 
     @Override
@@ -59,7 +60,7 @@ public class MIOTestSuiteAdapter extends MOSATestSuiteAdapter {
         best.addTests(solutions);
 
         if (solutions.isEmpty()) {
-            final Set<TestSuiteFitnessFunction> ffs = getAlgorithm().suiteFitnessFunctions.keySet();
+            final Set<TestSuiteFitnessFunction> ffs = this.suiteFitnessFunctions.keySet();
             for (TestSuiteFitnessFunction suiteFitness : ffs) {
                 best.setCoverage(suiteFitness, 0.0);
                 best.setFitness(suiteFitness, 1.0);

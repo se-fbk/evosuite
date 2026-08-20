@@ -1,24 +1,26 @@
-/**
+/*
  * Copyright (C) 2010-2018 Gordon Fraser, Andrea Arcuri and EvoSuite
  * contributors
- * <p>
+ *
  * This file is part of EvoSuite.
- * <p>
+ *
  * EvoSuite is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
  * by the Free Software Foundation, either version 3.0 of the License, or
  * (at your option) any later version.
- * <p>
+ *
  * EvoSuite is distributed in the hope that it will be useful, but
  * WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Lesser Public License for more details.
- * <p>
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with EvoSuite. If not, see <http://www.gnu.org/licenses/>.
  */
 package org.evosuite.ga.metaheuristics.mosa;
 
+import org.evosuite.Properties;
+import org.evosuite.coverage.FitnessFunctions;
 import org.evosuite.ga.archive.Archive;
 import org.evosuite.ga.metaheuristics.TestSuiteAdapter;
 import org.evosuite.testcase.TestChromosome;
@@ -26,6 +28,7 @@ import org.evosuite.testsuite.TestSuiteChromosome;
 import org.evosuite.testsuite.TestSuiteFitnessFunction;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -34,12 +37,26 @@ import java.util.Map;
  * An adapter that allows all variants of the MOSA algorithm to be used in such contexts where
  * {@code TestSuiteChromosome}s are expected instead of {@code TestChromosome}s.
  */
-public class MOSATestSuiteAdapter extends TestSuiteAdapter<AbstractMOSA> {
+public class MOSATestSuiteAdapter extends TestSuiteAdapter<AbstractMOSA<TestChromosome>> {
     private static final long serialVersionUID = 1556980428376303737L;
 
-    public MOSATestSuiteAdapter(final AbstractMOSA algorithm) {
+    /**
+     * Keep track of overall suite fitness functions and correspondent test fitness functions.
+     * EvoSuite-specific (used to translate the archive's per-target coverage into per-criterion
+     * suite coverage/fitness below), so it lives here rather than on the chromosome-agnostic
+     * {@link AbstractMOSA}.
+     */
+    protected final Map<TestSuiteFitnessFunction, Class<?>> suiteFitnessFunctions;
+
+    public MOSATestSuiteAdapter(final AbstractMOSA<TestChromosome> algorithm) {
         super(algorithm);
-        algorithm.setAdapter(this);
+
+        this.suiteFitnessFunctions = new LinkedHashMap<>();
+        for (Properties.Criterion criterion : Properties.CRITERION) {
+            TestSuiteFitnessFunction suiteFit = FitnessFunctions.getFitnessFunction(criterion);
+            Class<?> testFit = FitnessFunctions.getTestFitnessFunctionClass(criterion);
+            this.suiteFitnessFunctions.put(suiteFit, testFit);
+        }
     }
 
     /*
@@ -85,12 +102,13 @@ public class MOSATestSuiteAdapter extends TestSuiteAdapter<AbstractMOSA> {
      */
     @Override
     public TestSuiteChromosome getBestIndividual() {
-        TestSuiteChromosome best = getAlgorithm().generateSuite();
+        TestSuiteChromosome best = new TestSuiteChromosome();
+        Archive.getArchiveInstance().getSolutions().forEach(best::addTest);
         if (best.getTestChromosomes().isEmpty()) {
             for (TestChromosome test : getAlgorithm().getBestIndividuals()) {
                 best.addTest(test);
             }
-            for (TestSuiteFitnessFunction suiteFitness : getAlgorithm().suiteFitnessFunctions.keySet()) {
+            for (TestSuiteFitnessFunction suiteFitness : this.suiteFitnessFunctions.keySet()) {
                 best.setCoverage(suiteFitness, 0.0);
                 best.setFitness(suiteFitness, 1.0);
             }
@@ -104,8 +122,7 @@ public class MOSATestSuiteAdapter extends TestSuiteAdapter<AbstractMOSA> {
     }
 
     protected void computeCoverageAndFitness(TestSuiteChromosome suite) {
-        for (Map.Entry<TestSuiteFitnessFunction, Class<?>> entry : getAlgorithm().suiteFitnessFunctions
-                .entrySet()) {
+        for (Map.Entry<TestSuiteFitnessFunction, Class<?>> entry : this.suiteFitnessFunctions.entrySet()) {
             TestSuiteFitnessFunction suiteFitnessFunction = entry.getKey();
             Class<?> testFitnessFunction = entry.getValue();
 
@@ -125,7 +142,7 @@ public class MOSATestSuiteAdapter extends TestSuiteAdapter<AbstractMOSA> {
         }
     }
 
-    void applyLocalSearch(final TestSuiteChromosome testSuite) {
+    public void applyLocalSearch(final TestSuiteChromosome testSuite) {
         population = new LinkedList<>();
         population.add(testSuite);
         super.applyLocalSearch();

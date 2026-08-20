@@ -23,7 +23,10 @@ import org.evosuite.Properties;
 import org.evosuite.TimeController;
 import org.evosuite.ga.ChromosomeFactory;
 import org.evosuite.ga.archive.Archive;
+import org.evosuite.ga.archive.EvoSuiteArchiveAdapter;
 import org.evosuite.ga.metaheuristics.mosa.AbstractMOSA;
+import org.evosuite.ga.metaheuristics.mosa.MOSATestSuiteAdapter;
+import org.evosuite.ga.metaheuristics.mosa.OffspringFilter;
 import org.evosuite.testcase.TestChromosome;
 import org.evosuite.testcase.factories.RandomLengthTestFactory;
 import org.evosuite.testsuite.TestSuiteChromosome;
@@ -33,6 +36,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -40,7 +44,7 @@ import java.util.Set;
  *
  * @author José Campos
  */
-public class MIO extends AbstractMOSA {
+public class MIO extends AbstractMOSA<TestChromosome> {
 
     private static final long serialVersionUID = -5660970130698891194L;
 
@@ -54,13 +58,32 @@ public class MIO extends AbstractMOSA {
 
     private TestChromosome solution = null;
 
+    private MOSATestSuiteAdapter adapter = null;
+
     /**
      * Constructor.
      *
      * @param factory a {@link org.evosuite.ga.ChromosomeFactory} object.
      */
     public MIO(ChromosomeFactory<TestChromosome> factory) {
-        super(factory);
+        // MIO manages its own breeding entirely (see evolve() below) and never calls
+        // breedNextGeneration(), so the offspring filter is unused; MIO reads/writes EvoSuite's
+        // Archive singleton directly throughout (not through the SearchArchive abstraction), by
+        // design - it predates that abstraction and was out of scope for this refactor.
+        super(factory, EvoSuiteArchiveAdapter.getInstance(), OffspringFilter.mutateOnly());
+    }
+
+    public void setAdapter(final MOSATestSuiteAdapter adapter) {
+        Objects.requireNonNull(adapter);
+        if (this.adapter == null) {
+            this.adapter = adapter;
+        } else {
+            throw new IllegalStateException("adapter has already been set");
+        }
+    }
+
+    protected void applyLocalSearch(final TestSuiteChromosome testSuite) {
+        adapter.applyLocalSearch(testSuite);
     }
 
     /**

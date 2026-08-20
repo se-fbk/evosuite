@@ -26,14 +26,18 @@ import org.evosuite.Properties.TheReplacementFunction;
 import org.evosuite.ShutdownTestWriter;
 import org.evosuite.TestGenerationContext;
 import org.evosuite.coverage.branch.BranchPool;
+import org.evosuite.coverage.exception.ExceptionCoverageSuiteFitness;
 import org.evosuite.coverage.mutation.MutationTimeoutStoppingCondition;
 import org.evosuite.ga.ChromosomeFactory;
 import org.evosuite.ga.FitnessReplacementFunction;
 import org.evosuite.ga.archive.ArchiveTestChromosomeFactory;
+import org.evosuite.ga.archive.EvoSuiteArchiveAdapter;
 import org.evosuite.ga.metaheuristics.*;
 import org.evosuite.ga.metaheuristics.mosa.DynaMOSA;
 import org.evosuite.ga.metaheuristics.mosa.MOSA;
 import org.evosuite.ga.metaheuristics.mosa.MOSATestSuiteAdapter;
+import org.evosuite.ga.metaheuristics.mosa.TestChromosomeOffspringFilter;
+import org.evosuite.ga.metaheuristics.mosa.structural.EvoSuiteGoalManagerAdapter;
 import org.evosuite.ga.metaheuristics.mulambda.MuLambdaEA;
 import org.evosuite.ga.metaheuristics.mulambda.MuPlusLambdaEA;
 import org.evosuite.ga.metaheuristics.mulambda.OnePlusLambdaLambdaGA;
@@ -46,6 +50,7 @@ import org.evosuite.ga.operators.selection.*;
 import org.evosuite.ga.populationlimit.PopulationLimit;
 import org.evosuite.ga.stoppingconditions.*;
 import org.evosuite.statistics.StatisticsListener;
+import org.evosuite.testcase.TestChromosome;
 import org.evosuite.testcase.factories.AllMethodsTestChromosomeFactory;
 import org.evosuite.testcase.factories.JUnitTestCarvedChromosomeFactory;
 import org.evosuite.testcase.factories.RandomLengthTestFactory;
@@ -60,6 +65,10 @@ import org.evosuite.testsuite.secondaryobjectives.TestSuiteSecondaryObjective;
 import org.evosuite.utils.ArrayUtil;
 import org.evosuite.utils.ResourceController;
 import sun.misc.Signal;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.function.Consumer;
 
 /**
  * Factory for GA on test suites
@@ -172,28 +181,38 @@ public class PropertiesSuiteGAFactory
             case SPEA2:
                 logger.info("Chosen search algorithm: SPEA2");
                 return new SPEA2<>(factory);
-            case MOSA:
+            case MOSA: {
                 logger.info("Chosen search algorithm: MOSA");
-//				return new MOSA(factory);
+                warnIfNotRankCrowdDistanceTournament();
+                ChromosomeFactory<TestChromosome> testChromosomeFactory;
                 if (factory instanceof TestSuiteChromosomeFactory) {
                     final TestSuiteChromosomeFactory tscf = (TestSuiteChromosomeFactory) factory;
-                    return new MOSATestSuiteAdapter(new MOSA(tscf.getTestChromosomeFactory()));
+                    testChromosomeFactory = tscf.getTestChromosomeFactory();
                 } else {
                     logger.info("No specific factory for test cases given...");
                     logger.info("Using a default factory that creates tests with variable length");
-                    return new MOSATestSuiteAdapter(new MOSA(new RandomLengthTestFactory()));
+                    testChromosomeFactory = new RandomLengthTestFactory();
                 }
-            case DYNAMOSA:
+                return new MOSATestSuiteAdapter(new MOSA<TestChromosome>(testChromosomeFactory,
+                        EvoSuiteArchiveAdapter.getInstance(), new TestChromosomeOffspringFilter(),
+                        exceptionCoverageHook()));
+            }
+            case DYNAMOSA: {
                 logger.info("Chosen search algorithm: DynaMOSA");
-//				return new DynaMOSA(factory);
+                warnIfNotRankCrowdDistanceTournament();
+                ChromosomeFactory<TestChromosome> testChromosomeFactory;
                 if (factory instanceof TestSuiteChromosomeFactory) {
                     final TestSuiteChromosomeFactory tscf = (TestSuiteChromosomeFactory) factory;
-                    return new MOSATestSuiteAdapter(new DynaMOSA(tscf.getTestChromosomeFactory()));
+                    testChromosomeFactory = tscf.getTestChromosomeFactory();
                 } else {
                     logger.info("No specific factory for test cases given...");
                     logger.info("Using a default factory that creates tests with variable length");
-                    return new MOSATestSuiteAdapter(new DynaMOSA(new RandomLengthTestFactory()));
+                    testChromosomeFactory = new RandomLengthTestFactory();
                 }
+                return new MOSATestSuiteAdapter(new DynaMOSA<TestChromosome>(testChromosomeFactory,
+                        EvoSuiteArchiveAdapter.getInstance(), new TestChromosomeOffspringFilter(),
+                        EvoSuiteGoalManagerAdapter::new, exceptionCoverageHook()));
+            }
             case ONE_PLUS_LAMBDA_LAMBDA_GA:
                 logger.info("Chosen search algorithm: 1 + (lambda, lambda)GA");
                 return new OnePlusLambdaLambdaGA<>(factory, Properties.LAMBDA);
@@ -229,6 +248,29 @@ public class PropertiesSuiteGAFactory
                 logger.info("Chosen search algorithm: StandardGA");
                 return new StandardGA<>(factory);
         }
+    }
+
+    private static void warnIfNotRankCrowdDistanceTournament() {
+        if (Properties.SELECTION_FUNCTION != Properties.SelectionFunction.RANK_CROWD_DISTANCE_TOURNAMENT) {
+            logger.warn("Originally, MOSA was implemented with a '"
+                    + Properties.SelectionFunction.RANK_CROWD_DISTANCE_TOURNAMENT.name()
+                    + "' selection function. You may want to consider using it.");
+        }
+    }
+
+    /**
+     * If the EXCEPTION criterion is enabled, derives exception-coverage information from a
+     * chromosome's execution result after its fitness has been computed. Used to wire up MOSA
+     * (DynaMOSA derives exceptions itself, via its goal manager).
+     */
+    private static Consumer<TestChromosome> exceptionCoverageHook() {
+        return c -> {
+            if (ArrayUtil.contains(Properties.CRITERION, Properties.Criterion.EXCEPTION)) {
+                ExceptionCoverageSuiteFitness.calculateExceptionInfo(
+                        Collections.singletonList(c.getLastExecutionResult()),
+                        new HashMap<>(), new HashMap<>(), new HashMap<>(), new ExceptionCoverageSuiteFitness());
+            }
+        };
     }
 
     protected SelectionFunction<TestSuiteChromosome> getSelectionFunction() {

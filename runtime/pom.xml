@@ -15,21 +15,6 @@
         As such, it should have no reference to any other EvoSuite module, and we
         should try to keep the number of external dependencies to a minimum -->
 
-    <profiles>
-        <profile>
-            <id>Java8</id>
-            <activation>
-                <jdk>1.8</jdk>
-            </activation>
-            <dependencies>
-                <dependency>
-                    <groupId>com.sun</groupId>
-                    <artifactId>tools</artifactId>
-                </dependency>
-            </dependencies>
-        </profile>
-    </profiles>
-
     <dependencies>
 
         <dependency>
